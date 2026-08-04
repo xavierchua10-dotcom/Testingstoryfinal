@@ -31,8 +31,7 @@
   }
   #gameWrapper{
     position:relative; height:100%;
-    width:min(100vw, calc(100vh * 0.56));
-    overflow:hidden;
+    width:100%;
   }
   canvas{
     position:absolute; inset:0; display:block;
@@ -215,7 +214,7 @@
     <div class="boss-track"><div class="boss-fill" id="bossFill"></div></div>
   </div>
 
-  <div class="panel show" id="introPanel">
+  <div class="panel" id="introPanel">
     <div class="intro-portrait-wrap" id="introPortraitWrap">
       <img class="intro-portrait" id="introPortrait" src="savior-1.jpg" alt="Savior">
     </div>
@@ -526,7 +525,7 @@
     noiseHit(0.3, 0.16, 0, 2200);
   }
 
-  var THEME = 'cyberpunk'; // 'city' | 'forest' | 'cyberpunk'
+  var THEME = 'castle'; // 'city' | 'forest' | 'cyberpunk' | 'castle'
 
   var CHORDS = [
     { bass:55.00, pad:[110.00,130.81,164.81] }, // A minor
@@ -697,15 +696,15 @@
   (function initBuildings(){
     var count = 9;
     for(var bi=0; bi<count; bi++){
-      var fw = 0.05+Math.random()*0.09;
-      var fh = 0.28+Math.random()*0.6;
+      var fw = 0.045+Math.random()*0.06;
+      var fh = 0.34+Math.random()*0.55;
       var fx = bi/count + (Math.random()*0.06-0.03);
       var windows = [];
-      var cols = 2+Math.floor(Math.random()*2);
-      var rows = 3+Math.floor(Math.random()*4);
+      var cols = 1+Math.floor(Math.random()*2);
+      var rows = 3+Math.floor(Math.random()*3);
       for(var wc=0; wc<cols; wc++){
         for(var wr=0; wr<rows; wr++){
-          if(Math.random()<0.35) windows.push({ cx:(wc+0.5)/cols, cy:(wr+0.5)/rows });
+          if(Math.random()<0.4) windows.push({ cx:(wc+0.5)/cols, cy:(wr+0.5)/rows });
         }
       }
       buildings.push({ fx:fx, fw:fw, fh:fh, windows:windows });
@@ -725,6 +724,18 @@
   function scaleAt(z){ return 0.12 + 0.88*ease(z); }
 
   // ---------- Input ----------
+  // First real user gesture unlocks audio (browsers block autoplay until
+  // then) — no dialogue tap exists anymore to do this implicitly.
+  function unlockAudioOnce(){
+    ensureAudio();
+    window.removeEventListener('touchstart', unlockAudioOnce);
+    window.removeEventListener('pointerdown', unlockAudioOnce);
+    window.removeEventListener('keydown', unlockAudioOnce);
+  }
+  window.addEventListener('touchstart', unlockAudioOnce, {passive:true});
+  window.addEventListener('pointerdown', unlockAudioOnce);
+  window.addEventListener('keydown', unlockAudioOnce);
+
   function setLane(delta){
     player.lane = Math.max(-1, Math.min(1, player.lane + delta));
   }
@@ -906,52 +917,17 @@
     if(lives<=0) gameOver();
   }
 
-  // ---------- Opening cutscene ----------
-  // NOTE: dialogue intentionally left blank ("text") throughout this file —
-  // fill each line back in later. img/onShow/flash beats are kept intact.
-  var introLines = [
-    { img:'savior-1.jpg', text:"" },
-    { img:'savior-2.jpg', text:"" },
-    { img:'savior-3.jpg', text:"" },
-    { img:'savior-2.jpg', text:"" },
-    { img:'boss4-idle.png', text:"" },
-    { img:'savior-3.jpg', text:"" },
-    { img:'boss4-idle.png', text:"" },
-    { img:'savior-2.jpg', text:"" }
-  ];
-  var introIndex = 0;
-
+  // ---------- Opening ----------
+  // Dialogue/portrait boxes removed — game boots straight into the
+  // control-legend countdown, no tap required.
   var VILLAIN_IMAGES = ['boss4-idle.png','boss4-walk1.png','boss4-walk2.png','boss4-attack.png','boss4-transform.png','boss4-form2-idle.png','boss4-form2-move.png','boss4-form2-attack.png'];
   function isVillainImg(src){
     return VILLAIN_IMAGES.indexOf(src) !== -1;
   }
 
-  function showIntroLine(i){
-    var line = introLines[i];
-    introPortrait.src = line.img;
-    introText.textContent = line.text;
-    var villain = isVillainImg(line.img);
-    introPortraitWrap.classList.toggle('villain-frame', villain);
-    introSpeechBubble.classList.toggle('villain-frame', villain);
-    introPanel.classList.toggle('side-left', !villain);
-    introPanel.classList.toggle('side-right', villain);
-  }
-  showIntroLine(0);
-
-  function advanceIntro(){
+  function runCountdown(){
     ensureAudio();
     if(!beatTimer){ startBeat(); }
-    introIndex++;
-    if(introIndex < introLines.length){
-      showIntroLine(introIndex);
-    } else {
-      introPanel.classList.remove('show');
-      runCountdown();
-    }
-  }
-  introPanel.addEventListener('click', advanceIntro);
-
-  function runCountdown(){
     countdownOverlay.classList.add('show');
     var n = 3;
     countdownNumber.textContent = n;
@@ -966,52 +942,34 @@
       }
     }, 700);
   }
+  runCountdown();
 
-  // ---------- Mini narrator bubble (boss warning / ending, non-blocking) ----------
-  var miniBubbleTimer = null;
-  function showMiniDialogue(lines){
-    clearTimeout(miniBubbleTimer);
-    var i = 0;
-    function showNext(){
-      if(i >= lines.length){
-        miniBubble.classList.remove('show');
-        return;
-      }
-      miniPortrait.src = lines[i].img;
-      miniText.textContent = lines[i].text;
-      var miniVillain = isVillainImg(lines[i].img);
-      miniPortrait.classList.toggle('villain-frame', miniVillain);
-      miniSpeechBubble.classList.toggle('villain-frame', miniVillain);
-      miniBubble.classList.toggle('side-left', !miniVillain);
-      miniBubble.classList.toggle('side-right', miniVillain);
-      miniBubble.classList.add('show');
-      i++;
-      miniBubbleTimer = setTimeout(showNext, lines[i-1].hold || 2200);
-    }
-    showNext();
-  }
-
-  // ---------- Story cutscenes (pause gameplay, tap to advance) ----------
+  // ---------- Story beats (auto-advance, no tap / no text box) ----------
+  // Cutscenes now play out on a timer instead of waiting for a click.
+  // onShow/flash hooks (health resets, form switches, transform FX) still
+  // fire at the same beats — only the dialogue box and the tap-to-continue
+  // requirement are gone.
+  var CUTSCENE_STEP_MS = 480;
   var cutsceneLines = [];
   var cutsceneIndex = 0;
   var cutsceneOnComplete = null;
 
-  function showCutsceneLine(i){
-    var line = cutsceneLines[i];
+  function runCutsceneStep(){
+    var line = cutsceneLines[cutsceneIndex];
     if(line.flash) cutsceneFlashAlpha = 1.0;
-    if(line.flash || line.cardFlash){
-      cutscenePortraitWrap.classList.remove('portrait-flash-anim');
-      void cutscenePortraitWrap.offsetWidth;
-      cutscenePortraitWrap.classList.add('portrait-flash-anim');
-    }
     if(line.onShow) line.onShow();
-    cutscenePortrait.src = line.img;
-    cutsceneText.textContent = line.text;
-    var villain = isVillainImg(line.img);
-    cutscenePortraitWrap.classList.toggle('villain-frame', villain);
-    cutsceneSpeechBubble.classList.toggle('villain-frame', villain);
-    cutscenePanel.classList.toggle('side-left', !villain);
-    cutscenePanel.classList.toggle('side-right', villain);
+    cutsceneIndex++;
+    var delay = line.hold || CUTSCENE_STEP_MS;
+    if(cutsceneIndex < cutsceneLines.length){
+      setTimeout(runCutsceneStep, delay);
+    } else {
+      setTimeout(function(){
+        cutsceneActive = false;
+        var cb = cutsceneOnComplete;
+        cutsceneOnComplete = null;
+        if(cb) cb();
+      }, delay);
+    }
   }
 
   function startCutscene(lines, onComplete){
@@ -1019,23 +977,8 @@
     cutsceneIndex = 0;
     cutsceneOnComplete = onComplete;
     cutsceneActive = true;
-    showCutsceneLine(0);
-    cutscenePanel.classList.add('show');
+    runCutsceneStep();
   }
-
-  function advanceCutscene(){
-    cutsceneIndex++;
-    if(cutsceneIndex < cutsceneLines.length){
-      showCutsceneLine(cutsceneIndex);
-    } else {
-      cutscenePanel.classList.remove('show');
-      cutsceneActive = false;
-      var cb = cutsceneOnComplete;
-      cutsceneOnComplete = null;
-      if(cb) cb();
-    }
-  }
-  cutscenePanel.addEventListener('click', advanceCutscene);
 
   var BOSS_REVEAL_LINES = [
     { img:'boss4-idle.png', text:"" },
@@ -1169,12 +1112,13 @@
       seqStep = 0; seqBar = 0;
     }
 
-    if(bossEventActive){
+    if(THEME==='castle' || bossEventActive){
       flashTimer -= dt;
       if(flashTimer<=0){
-        flashAlpha = 0.3+Math.random()*0.25;
-        flashTimer = 1.6+Math.random()*2.4;
-        if(Math.random()<0.5) playThunder();
+        var stormIntensity = bossEventActive ? 1 : 0.55;
+        flashAlpha = (0.3+Math.random()*0.25) * stormIntensity;
+        flashTimer = bossEventActive ? (1.6+Math.random()*2.4) : (3.5+Math.random()*5);
+        if(Math.random() < (bossEventActive?0.5:0.35)) playThunder();
       }
     }
     if(flashAlpha>0){
@@ -1230,10 +1174,6 @@
         var upcomingIdx = STORY_BOSS_INDEX;
         bossWarningLabel = BOSS_TYPES[upcomingIdx].name + ' INCOMING';
         bossTaunt = BOSS_TAUNTS[upcomingIdx];
-        showMiniDialogue([
-          { img:'savior-1.jpg', text:"" },
-          { img:'savior-2.jpg', text:"" }
-        ]);
       }
     } else if(bossActive){
       var bt = BOSS_TYPES[bossTypeIndex];
@@ -1306,10 +1246,6 @@
                 obstacles = []; coins = []; powerUps = [];
                 endingActive = true;
                 endingTimer = ENDING_DURATION;
-                showMiniDialogue([
-                  { img:'savior-2.jpg', text:"" },
-                  { img:'savior-3.jpg', text:"", hold:4000 }
-                ]);
               });
             }
           } else {
@@ -1476,26 +1412,119 @@
           ctx.lineTo(bx+bw, hy+1);
           ctx.closePath();
           ctx.fill();
+        } else if(THEME === 'castle'){
+          var stoneBase = redFactor>0.01 ? lerpColor('#241f2e','#3a1414',redFactor) : '#241f2e';
+          var torchColor = redFactor>0.01 ? lerpColor('#ffb84a','#ff5030',redFactor) : '#ffb84a';
+          ctx.fillStyle = stoneBase;
+          ctx.fillRect(Math.round(bx), Math.round(by), Math.round(bw), Math.round(bh)+2);
+          var crenW = Math.max(2, bw*0.22);
+          for(var cx=bx; cx<bx+bw; cx+=crenW*2){
+            ctx.fillRect(Math.round(cx), Math.round(by-crenW*0.55), Math.round(crenW), Math.round(crenW*0.6));
+          }
+          ctx.fillStyle = torchColor;
+          for(var wi=0; wi<b.windows.length; wi++){
+            var w = b.windows[wi];
+            var wx = bx + w.cx*bw, wy = by + w.cy*bh;
+            ctx.fillRect(Math.round(wx-1), Math.round(wy-1.5), 2, 3);
+          }
         } else {
           ctx.fillStyle = redFactor>0.01 ? lerpColor('#3a1060','#601010',redFactor) : '#3a1060';
           ctx.fillRect(Math.round(bx), Math.round(by), Math.round(bw), Math.round(bh)+2);
           ctx.fillStyle = redFactor>0.01 ? lerpColor('#ff6ae0','#ff3030',redFactor) : '#ff6ae0';
-          for(var wi=0; wi<b.windows.length; wi++){
-            var w = b.windows[wi];
-            var wx = bx + w.cx*bw, wy = by + w.cy*bh;
-            ctx.fillRect(Math.round(wx-1), Math.round(wy-1), 2, 2);
+          for(var wi2=0; wi2<b.windows.length; wi2++){
+            var w2 = b.windows[wi2];
+            var wx2 = bx + w2.cx*bw, wy2 = by + w2.cy*bh;
+            ctx.fillRect(Math.round(wx2-1), Math.round(wy2-1), 2, 2);
           }
         }
       }
     }
   }
 
+  function drawCastleGate(){
+    var hy = horizonY();
+    var cx = iW/2;
+    var gateH = hy*0.82, gateW = gateH*0.62;
+    var baseY = hy+1;
+    var topY = baseY-gateH;
+    var stoneBase = redFactor>0.01 ? lerpColor('#2c2636','#3e1818',redFactor) : '#2c2636';
+    var stoneDark = redFactor>0.01 ? lerpColor('#1c1722','#280e0e',redFactor) : '#1c1722';
+    var torchColor = redFactor>0.01 ? lerpColor('#ffc766','#ff6a3a',redFactor) : '#ffc766';
+
+    // central keep body
+    ctx.fillStyle = stoneBase;
+    ctx.fillRect(Math.round(cx-gateW/2), Math.round(topY), Math.round(gateW), Math.round(gateH));
+
+    // crenellations along the top
+    var crenW = gateW*0.11;
+    for(var cxi=cx-gateW/2; cxi<cx+gateW/2; cxi+=crenW*2){
+      ctx.fillRect(Math.round(cxi), Math.round(topY-crenW*0.7), Math.round(crenW), Math.round(crenW*0.75));
+    }
+
+    // flanking corner turrets
+    var turW = gateW*0.22, turH = gateH*1.14;
+    [cx-gateW/2-turW*0.42, cx+gateW/2-turW*0.58].forEach(function(tx){
+      var ty = baseY-turH;
+      ctx.fillStyle = stoneDark;
+      ctx.fillRect(Math.round(tx), Math.round(ty), Math.round(turW), Math.round(turH));
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(tx+turW/2, ty-turH*0.16);
+      ctx.lineTo(tx+turW, ty);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = torchColor;
+      ctx.fillRect(Math.round(tx+turW*0.4), Math.round(ty+turH*0.22), 2, 3);
+    });
+
+    // the door — a dark arch centered in the keep
+    var doorW = gateW*0.34, doorH = gateH*0.5;
+    var doorX = cx-doorW/2, doorY = baseY-doorH;
+    ctx.fillStyle = stoneDark;
+    ctx.beginPath();
+    ctx.moveTo(doorX, doorY+doorH);
+    ctx.lineTo(doorX, doorY+doorH*0.28);
+    ctx.quadraticCurveTo(doorX, doorY, cx, doorY);
+    ctx.quadraticCurveTo(doorX+doorW, doorY, doorX+doorW, doorY+doorH*0.28);
+    ctx.lineTo(doorX+doorW, doorY+doorH);
+    ctx.closePath();
+    ctx.fill();
+
+    // torches either side of the door
+    var flick = 0.75+0.25*Math.sin(performance.now()/140);
+    [doorX-gateW*0.07, doorX+doorW+gateW*0.07].forEach(function(fx){
+      var fy = doorY+doorH*0.35;
+      ctx.fillStyle = '#2a2320';
+      ctx.fillRect(Math.round(fx-1), Math.round(fy), 2, Math.round(gateH*0.1));
+      ctx.save();
+      ctx.globalAlpha = flick;
+      var grad = ctx.createRadialGradient(fx,fy,0,fx,fy,gateH*0.05);
+      grad.addColorStop(0,'#fff2c0');
+      grad.addColorStop(0.5,torchColor);
+      grad.addColorStop(1,'rgba(255,150,50,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(fx,fy,gateH*0.05,0,Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // narrow window slits up the keep face
+    ctx.fillStyle = torchColor;
+    [[-0.22,0.16],[0.22,0.16],[-0.22,-0.12],[0.22,-0.12]].forEach(function(pos){
+      var wx = cx+pos[0]*gateW, wy = topY+gateH*0.38+pos[1]*gateH*0.4;
+      ctx.fillRect(Math.round(wx-1), Math.round(wy-2), 2, 4);
+    });
+  }
+
   function drawSky(){
     var hy = horizonY();
     var dayBands = THEME === 'forest'
       ? ['#4a90d9','#79b8e8','#a8d4c8','#dcefd0']
-      : ['#2a0f4a','#5a1a8a','#9a3ad0','#e896ff'];
-    var nightBands = ['#05040d','#0d0a1f','#161233','#241a3a'];
+      : THEME === 'castle'
+        ? ['#1c1f33','#2c2f4a','#454866','#6a6684']
+        : ['#2a0f4a','#5a1a8a','#9a3ad0','#e896ff'];
+    var nightBands = THEME === 'castle' ? ['#04040a','#0a0a17','#111226','#1a1830'] : ['#05040d','#0d0a1f','#161233','#241a3a'];
     var redNightBands = ['#0d0303','#1f0808','#330f0f','#451515'];
     var stops = [0.0, 0.34, 0.62, 0.85];
     var skyGrad = ctx.createLinearGradient(0, 0, 0, hy);
@@ -1506,15 +1535,32 @@
     ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, iW, Math.ceil(hy)+1);
 
-    if(nightFactor>0.02){
-      var starAlphaBase = nightFactor;
+    if(nightFactor>0.02 || THEME==='castle'){
+      var starAlphaBase = THEME==='castle' ? Math.max(nightFactor,0.55) : nightFactor;
       var t = performance.now()/1000;
       for(var si=0; si<stars.length; si++){
         var st = stars[si];
         var tw = 0.4+0.5*Math.sin(t*1.4+st.phase);
-        ctx.fillStyle = 'rgba(244,238,255,'+Math.max(0,(tw*starAlphaBase)).toFixed(2)+')';
+        ctx.fillStyle = 'rgba(244,238,255,'+Math.max(0,(tw*starAlphaBase*0.7)).toFixed(2)+')';
         ctx.fillRect(Math.round(st.fx*iW), Math.round(st.fy*hy), Math.max(1,st.r), Math.max(1,st.r));
       }
+    }
+
+    if(THEME === 'castle'){
+      var stormCloudAlpha = 0.5;
+      drawCloud(((cloudT*6) % (iW+50))-25, hy*0.16, iH*0.035, stormCloudAlpha);
+      drawCloud(((cloudT*4 + iW*0.5) % (iW+70))-35, hy*0.3, iH*0.05, stormCloudAlpha*0.9);
+      drawCloud(((cloudT*5 + iW*0.2) % (iW+60))-30, hy*0.1, iH*0.04, stormCloudAlpha*0.8);
+      if(flashAlpha>0.12){
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.5, flashAlpha);
+        ctx.fillStyle = '#e8ecff';
+        ctx.fillRect(0,0,iW,Math.ceil(hy)+1);
+        ctx.restore();
+      }
+      drawSkyline();
+      drawCastleGate();
+      return;
     }
 
     var sunColor = lerpColor('#ff6ad5', '#c8a0ff', nightFactor);
@@ -1526,10 +1572,101 @@
     drawSkyline();
   }
 
+  function drawCastleGroundBands(hy, gy){
+    var t = performance.now()/1000;
+    var p1 = hy + (gy-hy)*0.07;   // end of stone wall footing
+    var p2 = hy + (gy-hy)*0.34;   // end of brick apron
+
+    // ---- stone wall footing ----
+    var stoneBase = redFactor>0.01 ? lerpColor('#332d3d','#4a1f1f',redFactor) : '#332d3d';
+    var stoneMortar = redFactor>0.01 ? lerpColor('#1c1722','#280e0e',redFactor) : '#1c1722';
+    ctx.fillStyle = stoneBase;
+    ctx.fillRect(0, Math.floor(hy), iW, Math.ceil(p1-hy));
+    ctx.strokeStyle = stoneMortar;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    var blockW = iW*0.10;
+    for(var bx=0; bx<iW; bx+=blockW){
+      ctx.moveTo(bx, hy); ctx.lineTo(bx, p1);
+    }
+    ctx.moveTo(0, hy+(p1-hy)*0.5); ctx.lineTo(iW, hy+(p1-hy)*0.5);
+    ctx.stroke();
+
+    // ---- brick apron ----
+    var brickBase = redFactor>0.01 ? lerpColor('#8a4a2a','#7a2a18',redFactor) : '#8a4a2a';
+    var brickMortar = redFactor>0.01 ? lerpColor('#5a3520','#452015',redFactor) : '#5a3520';
+    ctx.fillStyle = brickBase;
+    ctx.fillRect(0, Math.floor(p1), iW, Math.ceil(p2-p1));
+    ctx.strokeStyle = brickMortar;
+    ctx.lineWidth = 1;
+    var rowH = (p2-p1)/3;
+    ctx.beginPath();
+    for(var ri=0; ri<=3; ri++){
+      var ry = p1+ri*rowH;
+      ctx.moveTo(0, ry); ctx.lineTo(iW, ry);
+    }
+    var brickW = iW*0.075;
+    for(var ri2=0; ri2<3; ri2++){
+      var ry0=p1+ri2*rowH, ry1=p1+(ri2+1)*rowH;
+      var offset = (ri2%2===0) ? 0 : brickW/2;
+      for(var bx2=-offset; bx2<iW; bx2+=brickW){
+        ctx.moveTo(bx2, ry0); ctx.lineTo(bx2, ry1);
+      }
+    }
+    ctx.stroke();
+
+    // ---- water moat ----
+    var waterGrad = ctx.createLinearGradient(0, p2, 0, gy);
+    var waterTop = redFactor>0.01 ? lerpColor('#1a3a5c','#3a1a1a',redFactor) : '#1a3a5c';
+    var waterBot = redFactor>0.01 ? lerpColor('#2f6f9e','#5a2a20',redFactor) : '#2f6f9e';
+    waterGrad.addColorStop(0, waterTop);
+    waterGrad.addColorStop(1, waterBot);
+    ctx.fillStyle = waterGrad;
+    ctx.fillRect(0, Math.floor(p2), iW, Math.ceil(gy-p2));
+
+    ctx.strokeStyle = 'rgba(180,220,255,0.35)';
+    ctx.lineWidth = 1;
+    var rippleRows = 6;
+    for(var wi=0; wi<rippleRows; wi++){
+      var frac = wi/(rippleRows-1);
+      var wy = p2 + (gy-p2)*frac;
+      var amp = 1+3*frac;
+      var freq = 0.08+0.02*wi;
+      ctx.beginPath();
+      for(var x=0; x<=iW; x+=4){
+        var yy = wy + Math.sin(x*freq + t*1.2 + wi)*amp;
+        if(x===0) ctx.moveTo(x,yy); else ctx.lineTo(x,yy);
+      }
+      ctx.stroke();
+    }
+
+    for(var si=0; si<10; si++){
+      var sx = (Math.sin(si*12.9)*0.5+0.5)*iW;
+      var sfrac = (Math.sin(si*5.7+1)*0.5+0.5);
+      var sy = p2 + (gy-p2)*sfrac;
+      var alpha = 0.4+0.4*Math.sin(t*3+si);
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = '#eaf6ff';
+      ctx.fillRect(sx, sy, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawRoad(){
     var hy = horizonY(), gy = groundY();
     var topH = roadTopHalf(), botH = roadBottomHalf();
     var isForest = THEME === 'forest';
+    var isCastle = THEME === 'castle';
+
+    if(isCastle){
+      drawCastleGroundBands(hy, gy);
+    } else {
+      var groundColor = isForest
+        ? (redFactor>0.01 ? lerpColor('#2f4a2a','#4a1f1f',redFactor) : '#2f4a2a')
+        : (redFactor>0.01 ? lerpColor('#160a2a','#300a0a',redFactor) : '#160a2a');
+      ctx.fillStyle = groundColor;
+      ctx.fillRect(0, Math.floor(hy), iW, Math.ceil(gy-hy));
+    }
 
     ctx.beginPath();
     ctx.moveTo(iW/2-topH, hy);
@@ -1537,12 +1674,12 @@
     ctx.lineTo(iW/2+botH, gy);
     ctx.lineTo(iW/2-botH, gy);
     ctx.closePath();
-    ctx.fillStyle = isForest ? '#5a4a34' : (redFactor>0.01 ? lerpColor('#2a1045','#450f0f',redFactor) : '#2a1045');
+    ctx.fillStyle = isForest ? '#5a4a34' : isCastle ? (redFactor>0.01 ? lerpColor('#3a3644','#4a1f1f',redFactor) : '#3a3644') : (redFactor>0.01 ? lerpColor('#2a1045','#450f0f',redFactor) : '#2a1045');
     ctx.fill();
 
     ctx.save();
     ctx.clip();
-    ctx.strokeStyle = isForest ? '#463824' : (redFactor>0.01 ? lerpColor('#4a1a6a','#6a1a1a',redFactor) : '#4a1a6a');
+    ctx.strokeStyle = isForest ? '#463824' : isCastle ? (redFactor>0.01 ? lerpColor('#252030','#341414',redFactor) : '#252030') : (redFactor>0.01 ? lerpColor('#4a1a6a','#6a1a1a',redFactor) : '#4a1a6a');
     var dz = 0.16, off = (distance*0.03) % dz;
     for(var z=off; z<1.02; z+=dz){
       var yy = Math.round(yAt(z));
@@ -1555,7 +1692,7 @@
     }
     ctx.restore();
 
-    ctx.strokeStyle = isForest ? '#e8dcc0' : (redFactor>0.01 ? lerpColor('#ff6ae0','#ff3030',redFactor) : '#ff6ae0');
+    ctx.strokeStyle = isForest ? '#e8dcc0' : isCastle ? (redFactor>0.01 ? lerpColor('#8a7a5a','#b04a30',redFactor) : '#8a7a5a') : (redFactor>0.01 ? lerpColor('#ff6ae0','#ff3030',redFactor) : '#ff6ae0');
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(iW/2-topH,hy); ctx.lineTo(iW/2-botH,gy);
@@ -1564,7 +1701,7 @@
 
     ctx.setLineDash([6,5]);
     ctx.lineDashOffset = -(distance*0.9) % 11;
-    ctx.strokeStyle = isForest ? 'rgba(232,220,192,0.6)' : lerpColorAlpha('#ff8ae8','#ff5050',redFactor,0.6);
+    ctx.strokeStyle = isForest ? 'rgba(232,220,192,0.6)' : isCastle ? 'rgba(170,158,132,0.55)' : lerpColorAlpha('#ff8ae8','#ff5050',redFactor,0.6);
     ctx.lineWidth = 1.5;
     [-0.5,0.5].forEach(function(l){
       ctx.beginPath();
@@ -1579,15 +1716,28 @@
     var y = yAt(p.z), s = scaleAt(p.z);
     var edgeX = p.side<0 ? (iW/2 - halfWidthAt(p.z)) : (iW/2 + halfWidthAt(p.z));
     var h = iH*0.20*s;
-    ctx.strokeStyle = redFactor>0.01 ? lerpColor('#6a3a9a','#9a3a3a',redFactor) : '#6a3a9a';
+    var isCastle = THEME === 'castle';
+    ctx.strokeStyle = isCastle ? (redFactor>0.01 ? lerpColor('#3a3430','#4a1f1f',redFactor) : '#3a3430') : (redFactor>0.01 ? lerpColor('#6a3a9a','#9a3a3a',redFactor) : '#6a3a9a');
     ctx.lineWidth = Math.max(1, 2*s);
     ctx.beginPath();
     ctx.moveTo(Math.round(edgeX), Math.round(y));
     ctx.lineTo(Math.round(edgeX), Math.round(y-h));
     ctx.stroke();
     var lampSize = Math.max(2, 4*s);
-    ctx.fillStyle = redFactor>0.01 ? lerpColor('#ff6ae0','#ff3030',redFactor) : '#ff6ae0';
-    ctx.fillRect(Math.round(edgeX-lampSize/2), Math.round(y-h-lampSize/2), Math.round(lampSize), Math.round(lampSize));
+    if(isCastle){
+      var flick = 0.75+0.25*Math.sin(performance.now()/130 + edgeX);
+      var flameColor = redFactor>0.01 ? lerpColor('#ffb84a','#ff5030',redFactor) : '#ffb84a';
+      ctx.save();
+      ctx.globalAlpha = flick;
+      ctx.fillStyle = flameColor;
+      ctx.beginPath();
+      ctx.arc(Math.round(edgeX), Math.round(y-h-lampSize*0.3), lampSize*0.75, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    } else {
+      ctx.fillStyle = redFactor>0.01 ? lerpColor('#ff6ae0','#ff3030',redFactor) : '#ff6ae0';
+      ctx.fillRect(Math.round(edgeX-lampSize/2), Math.round(y-h-lampSize/2), Math.round(lampSize), Math.round(lampSize));
+    }
   }
 
   function drawTrain(o){
@@ -1606,6 +1756,27 @@
       ctx.fillStyle = '#55544c';
       ctx.fillRect(Math.round(rx+rw*0.15), Math.round(ry+rh*0.4), Math.round(rw*0.2), Math.round(rh*0.35));
       ctx.fillRect(Math.round(rx+rw*0.6), Math.round(ry+rh*0.5), Math.round(rw*0.18), Math.round(rh*0.3));
+      return;
+    }
+    if(THEME === 'castle'){
+      var wallBase = redFactor>0.01 ? lerpColor('#4a4552','#5a2424',redFactor) : '#4a4552';
+      ctx.fillStyle = wallBase;
+      ctx.fillRect(rx,ry,rw,rh);
+      ctx.strokeStyle = shadeColor(wallBase, 0.4);
+      ctx.lineWidth = Math.max(1, Math.round(2*s));
+      ctx.strokeRect(rx,ry,rw,rh);
+      ctx.fillStyle = shadeColor(wallBase, 0.6);
+      var blockH = Math.max(2, rh*0.16);
+      for(var by2=ry; by2<ry+rh; by2+=blockH){
+        ctx.fillRect(rx, Math.round(by2), rw, 1);
+      }
+      ctx.fillStyle = redFactor>0.01 ? lerpColor('#ffb84a','#ff5030',redFactor) : '#ffb84a';
+      var slitW = rw*0.1, slitGap = rw*0.22, startX2 = rx+rw*0.12;
+      for(var wi3=0; wi3<3; wi3++){
+        ctx.fillRect(Math.round(startX2+wi3*slitGap), Math.round(ry+rh*0.22), Math.round(slitW), Math.round(rh*0.3));
+      }
+      ctx.fillStyle = '#211d26';
+      ctx.fillRect(rx, Math.round(ry+rh*0.85), rw, Math.round(rh*0.15));
       return;
     }
     ctx.fillStyle = '#4a1670';
@@ -1643,6 +1814,30 @@
       ctx.fillRect(rx, ry, rw, Math.max(1,Math.round(rh*0.25)));
       return;
     }
+    if(THEME === 'castle'){
+      var woodBase = redFactor>0.01 ? lerpColor('#5a4530','#5a2424',redFactor) : '#5a4530';
+      ctx.fillStyle = woodBase;
+      ctx.fillRect(rx,ry,rw,rh);
+      ctx.strokeStyle = shadeColor(woodBase, 0.4);
+      ctx.lineWidth = Math.max(1, Math.round(2*s));
+      ctx.strokeRect(rx,ry,rw,rh);
+      ctx.fillStyle = shadeColor(woodBase, 0.55);
+      var plankGap = Math.max(3, rw*0.18);
+      for(var gx2=rx+plankGap*0.5; gx2<rx+rw; gx2+=plankGap){
+        ctx.fillRect(Math.round(gx2), ry, 1, rh);
+      }
+      ctx.fillStyle = '#7a7a82';
+      var spikeW = Math.max(2, rw*0.09);
+      for(var spx=rx+spikeW*0.5; spx<rx+rw; spx+=spikeW*2.2){
+        ctx.beginPath();
+        ctx.moveTo(spx, ry);
+        ctx.lineTo(spx+spikeW/2, Math.round(ry-rh*0.3));
+        ctx.lineTo(spx+spikeW, ry);
+        ctx.closePath();
+        ctx.fill();
+      }
+      return;
+    }
     ctx.fillStyle = '#8a3ad0';
     ctx.fillRect(rx,ry,rw,rh);
     ctx.strokeStyle = shadeColor('#8a3ad0', 0.45);
@@ -1671,6 +1866,26 @@
       ctx.beginPath(); ctx.arc(rx+rw*0.2, ry, leafR, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(rx+rw*0.55, ry-leafR*0.4, leafR, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(rx+rw*0.85, ry, leafR, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    if(THEME === 'castle'){
+      var ironBase = redFactor>0.01 ? lerpColor('#3a3a42','#5a2424',redFactor) : '#3a3a42';
+      ctx.fillStyle = ironBase;
+      ctx.fillRect(rx,ry,rw,rh);
+      ctx.strokeStyle = shadeColor(ironBase, 0.5);
+      ctx.lineWidth = Math.max(1, Math.round(2*s));
+      ctx.strokeRect(rx,ry,rw,rh);
+      ctx.fillStyle = shadeColor(ironBase, 0.3);
+      var linkGap = Math.max(3, rw*0.1);
+      for(var lx=rx+linkGap*0.5; lx<rx+rw; lx+=linkGap){
+        ctx.beginPath();
+        ctx.arc(Math.round(lx), Math.round(ry+rh/2), Math.max(1,rh*0.35), 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#232026';
+      var postW2 = Math.max(1, Math.round(3*s));
+      ctx.fillRect(rx+2, ry+rh, postW2, Math.round(y-(ry+rh)));
+      ctx.fillRect(rx+rw-2-postW2, ry+rh, postW2, Math.round(y-(ry+rh)));
       return;
     }
     ctx.fillStyle = '#d048ff';
