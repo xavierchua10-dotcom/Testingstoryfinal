@@ -647,7 +647,9 @@
   var BOSS2_HEALTH = 12;
   var BOSS3_HEALTH = 14;
   var RAGE_SPEED_MULT = 0.62;
+  var BOSS_HOME_LANE = 0;
   var bossForm2, bossAttackVariant, bossZoom, bossTransformFlash, bossRageMode;
+  var bossFlipsRemaining, bossNextFlipTimer;
   var cutsceneActive = false;
   var cutsceneFlashAlpha = 0;
   // Phase 1 — mage form
@@ -679,12 +681,13 @@
     bossTaunt = '';
     bossSirenTimer = 0;
     bossDefeatFlashTimer = 0; bossEncounterCount = 0; bossTypeIndex = 0;
-    bossLaneVisual = 0; bossHoverTarget = 0; bossPhase = 'moving'; bossPhaseTimer = 0; bossPhaseDuration = 1;
+    bossLaneVisual = BOSS_HOME_LANE; bossHoverTarget = BOSS_HOME_LANE; bossPhase = 'moving'; bossPhaseTimer = 0; bossPhaseDuration = 1;
     bossTargetLanes = [0]; bossBeamLanes = []; bossBeamColor = '#ff2fd6';
     nightFactor = 0; flashTimer = 2+Math.random()*2; flashAlpha = 0; redFactor = 0;
     endingActive = false; endingTimer = 0;
-    bossForm2 = false; bossAttackVariant = 'lunge'; bossZoom = 0; bossTransformFlash = 0;
+    bossForm2 = false; bossAttackVariant = 'ranged'; bossZoom = 0; bossTransformFlash = 0;
     bossRageMode = false;
+    bossFlipsRemaining = 0; bossNextFlipTimer = 0;
     cutsceneActive = false;
     cutsceneFlashAlpha = 0;
   }
@@ -1157,9 +1160,9 @@
           bossMaxHealth = BOSS_HEALTH[bossTypeIndex];
           bossHealth = bossMaxHealth;
           bossWarningTimer = 0; bossWarningShown = false;
-          bossTargetLanes = pickTargetLanes(startBt.beamCount);
-          bossHoverTarget = avgLane(bossTargetLanes);
-          bossLaneVisual = player.lane;
+          bossTargetLanes = pickTargetLanes(1);
+          bossHoverTarget = BOSS_HOME_LANE;
+          bossLaneVisual = BOSS_HOME_LANE;
           bossPhase = 'moving'; bossPhaseTimer = 0;
           bossLabel.textContent = startBt.name;
           bossBar.classList.add('show');
@@ -1177,11 +1180,8 @@
       }
     } else if(bossActive){
       var bt = BOSS_TYPES[bossTypeIndex];
+      bossHoverTarget = BOSS_HOME_LANE;
       bossLaneVisual += (bossHoverTarget - bossLaneVisual) * Math.min(1, BOSS_LANE_LERP*dt);
-
-      var lungeActive = bossForm2 && bossAttackVariant==='lunge' && (bossPhase==='charging'||bossPhase==='firing');
-      var zoomTarget = lungeActive ? 1 : 0;
-      bossZoom += (zoomTarget - bossZoom) * Math.min(1, dt*6);
 
       if(bossPhase === 'moving'){
         if(Math.abs(bossLaneVisual-bossHoverTarget) < 0.04){
@@ -1189,23 +1189,47 @@
           var rageMult1 = bossRageMode ? RAGE_SPEED_MULT : 1;
           bossPhaseTimer = (bt.chargeMin + Math.random()*(bt.chargeMax-bt.chargeMin)) * rageMult1;
           bossPhaseDuration = bossPhaseTimer;
+
+          bossAttackVariant = Math.random()<0.5 ? 'melee' : 'ranged';
+          bossTargetLanes = pickTargetLanes(1);
+
+          if(bossForm2){
+            bossFlipsRemaining = bossRageMode ? (2+Math.floor(Math.random()*2)) : 1;
+            var flipSpan = bossPhaseDuration * (bossRageMode ? 0.55 : 0.7);
+            bossNextFlipTimer = bossPhaseDuration*0.18 + Math.random()*flipSpan;
+          } else {
+            bossFlipsRemaining = 0;
+            bossNextFlipTimer = 0;
+          }
         }
       } else if(bossPhase === 'charging'){
         bossPhaseTimer -= dt;
+
+        if(bossFlipsRemaining > 0){
+          bossNextFlipTimer -= dt;
+          if(bossNextFlipTimer <= 0 && bossPhaseTimer > 0.06){
+            var otherLanes = LANES.filter(function(l){ return l !== bossTargetLanes[0]; });
+            bossTargetLanes = [ otherLanes[Math.floor(Math.random()*otherLanes.length)] ];
+            bossFlipsRemaining--;
+            var remainTime = Math.max(0.05, bossPhaseTimer - 0.05);
+            var nextGap = bossRageMode ? (0.08+Math.random()*0.14) : (0.12+Math.random()*0.18);
+            bossNextFlipTimer = Math.min(nextGap, remainTime*0.6);
+          }
+        }
+
         if(bossPhaseTimer <= 0){
           bossPhase = 'firing';
-          var isEyeLaser = bossForm2 && bossAttackVariant==='eyelaser';
-          var isGrenade = !bossForm2;
-          bossPhaseTimer = isGrenade ? 0.35 : 0.16;
+          var isMelee = bossAttackVariant === 'melee';
+          bossPhaseTimer = isMelee ? 0.22 : (bossForm2 ? 0.2 : 0.4);
           bossPhaseDuration = bossPhaseTimer;
           bossBeamLanes = bossTargetLanes.slice();
-          bossBeamColor = isEyeLaser ? '#ff2020' : (Math.random()<0.5 ? bt.colorA : bt.colorB);
-          if(isGrenade){ playGrenadeBlast(); }
-          else if(bossForm2 && bossAttackVariant==='lunge'){ playLunge(); }
-          else { playPlasmaFire(); }
+          bossBeamColor = bossForm2 ? '#ff2020' : '#c04dff';
+          if(isMelee){ playLunge(); }
+          else if(bossForm2){ playPlasmaFire(); }
+          else { playGrenadeBlast(); }
           if(bossBeamLanes.indexOf(player.lane) !== -1){
             var bsx = laneCenterX(player.visualLane,1), bsy = groundY()-iH*0.1;
-            takeHit(bsx, bsy, isEyeLaser ? 2 : 1);
+            takeHit(bsx, bsy, 1);
           }
         }
       } else if(bossPhase === 'firing'){
@@ -1224,16 +1248,14 @@
             obstacles = []; coins = []; powerUps = [];
             if(!bossForm2){
               startCutscene(TRANSFORM_LINES, function(){
-                bossAttackVariant = Math.random()<0.5 ? 'lunge' : 'eyelaser';
-                bossTargetLanes = pickTargetLanes(bt.beamCount);
-                bossHoverTarget = avgLane(bossTargetLanes);
+                bossTargetLanes = pickTargetLanes(1);
+                bossHoverTarget = BOSS_HOME_LANE;
                 bossPhase = 'moving';
               });
             } else if(!bossRageMode){
               startCutscene(RAGE_LINES, function(){
-                bossAttackVariant = Math.random()<0.5 ? 'lunge' : 'eyelaser';
-                bossTargetLanes = pickTargetLanes(bt.beamCount);
-                bossHoverTarget = avgLane(bossTargetLanes);
+                bossTargetLanes = pickTargetLanes(1);
+                bossHoverTarget = BOSS_HOME_LANE;
                 bossPhase = 'moving';
               });
             } else {
@@ -1249,9 +1271,8 @@
               });
             }
           } else {
-            if(bossForm2) bossAttackVariant = Math.random()<0.5 ? 'lunge' : 'eyelaser';
-            bossTargetLanes = pickTargetLanes(bt.beamCount);
-            bossHoverTarget = avgLane(bossTargetLanes);
+            bossTargetLanes = pickTargetLanes(1);
+            bossHoverTarget = BOSS_HOME_LANE;
             bossPhase = 'moving';
           }
         }
@@ -1742,7 +1763,7 @@
 
   function drawTrain(o){
     var y = yAt(o.z), s = scaleAt(o.z), x = laneCenterX(o.lane,o.z);
-    var w = laneWidthAt(o.z)*1.3, h = iH*0.42*s;
+    var w = laneWidthAt(o.z)*1.05, h = iH*0.30*s;
     drawGroundShadow(x, y, w*0.42, 0.28*s);
     var rx=Math.round(x-w/2), ry=Math.round(y-h), rw=Math.round(w), rh=Math.round(h);
     if(THEME === 'forest'){
@@ -1988,8 +2009,8 @@
     }
     var x = laneCenterX(bossLaneVisual, 1);
     var baseY = groundY() - iH*0.015;
-    var hoverY = baseY - iH*0.36 + Math.sin(performance.now()/260)*2 + bossZoom*iH*0.22;
-    var bodyH = iH*0.15 * (1 + bossZoom*1.7);
+    var hoverY = baseY - iH*0.36 + Math.sin(performance.now()/260)*2;
+    var bodyH = iH*0.15;
     var aspect = (img.complete && img.naturalWidth>0) ? (img.naturalWidth/img.naturalHeight) : 0.7;
     var bodyW = bodyH*aspect;
 
@@ -2016,73 +2037,69 @@
     }
 
     if(img.complete && img.naturalWidth>0){
-      ctx.save();
-      if(bossZoom>0.02){
-        ctx.shadowColor = '#ff2020';
-        ctx.shadowBlur = 8*bossZoom;
-      }
       ctx.drawImage(img, Math.round(x-bodyW/2), Math.round(hoverY-bodyH), Math.round(bodyW), Math.round(bodyH));
-      ctx.restore();
     }
   }
 
-  function drawFlameColumn(x, topY, botY, alpha, seed){
-    var segments = 9;
+  function drawRedLaser(x, topY, botY, alpha, seed){
     var h = botY - topY;
-    var t = performance.now()/130 + seed;
+    var t = performance.now()/1000 + seed;
+    var jitter = Math.sin(t*40)*iH*0.006;
     ctx.save();
     ctx.globalAlpha = alpha;
-    for(var i=0; i<segments; i++){
-      var frac = i/(segments-1);
-      var segY = topY + h*frac;
-      var wobble = Math.sin(t + i*1.3) * (iH*0.02) * (0.4+frac*0.8);
-      var segX = x + wobble;
-      var baseW = iH*0.05 * (1 - frac*0.22);
-      var flick = 0.7 + 0.3*Math.sin(t*1.7 + i*2.1);
-      var w = Math.max(2, baseW*flick);
-      var grad = ctx.createRadialGradient(segX,segY,0,segX,segY,w);
-      grad.addColorStop(0, '#fff2a8');
-      grad.addColorStop(0.4, '#ff8a2f');
-      grad.addColorStop(1, '#c81810');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.ellipse(segX, segY, w, w*1.3, 0, 0, Math.PI*2);
-      ctx.fill();
+    var glowW = iH*0.05, coreW = iH*0.018;
+    var grad = ctx.createLinearGradient(x-glowW, topY, x+glowW, topY);
+    grad.addColorStop(0, 'rgba(255,20,20,0)');
+    grad.addColorStop(0.5, 'rgba(255,50,50,0.9)');
+    grad.addColorStop(1, 'rgba(255,20,20,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x-glowW+jitter, topY, glowW*2, h);
+    ctx.fillStyle = '#ffe0e0';
+    ctx.fillRect(x-coreW/2+jitter, topY, coreW, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    var segs = 5;
+    for(var i=0; i<segs; i++){
+      var frac = i/(segs-1);
+      var sy = topY + h*frac;
+      var sx = x + Math.sin(t*25 + i*3)*iH*0.012 + jitter;
+      if(i===0) ctx.moveTo(sx,sy); else ctx.lineTo(sx,sy);
     }
+    ctx.stroke();
     ctx.restore();
   }
 
-  function drawGrenade(x, y, spinT){
+  function drawFireball(x, y, spinT){
+    var pulse = 0.8+0.2*Math.sin(spinT*3);
+    var r = iH*0.02*pulse;
     ctx.save();
-    ctx.translate(Math.round(x), Math.round(y));
-    ctx.rotate(spinT);
-    ctx.fillStyle = '#2a3a1a';
+    var grad = ctx.createRadialGradient(x,y,0,x,y,r*1.8);
+    grad.addColorStop(0, '#fff0ff');
+    grad.addColorStop(0.35, '#e070ff');
+    grad.addColorStop(0.7, '#a020e0');
+    grad.addColorStop(1, 'rgba(120,10,180,0)');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.ellipse(0, 0, iH*0.02, iH*0.024, 0, 0, Math.PI*2);
+    ctx.arc(x, y, r*1.8, 0, Math.PI*2);
     ctx.fill();
-    ctx.fillStyle = '#4a5a2a';
+    ctx.fillStyle = '#fff0ff';
     ctx.beginPath();
-    ctx.ellipse(-iH*0.006, -iH*0.008, iH*0.008, iH*0.01, 0, 0, Math.PI*2);
+    ctx.arc(x, y, r*0.5, 0, Math.PI*2);
     ctx.fill();
-    ctx.fillStyle = '#1a1a2e';
-    ctx.fillRect(-iH*0.003, -iH*0.03, iH*0.006, iH*0.008);
     ctx.restore();
-    ctx.fillStyle = 'rgba(255,170,48,0.9)';
-    ctx.beginPath();
-    ctx.arc(x, y-iH*0.032, iH*0.005, 0, Math.PI*2);
-    ctx.fill();
   }
 
-  function drawExplosion(x, y, progress){
+  function drawFireballBurst(x, y, progress){
     var r = iH*0.095*(0.25+progress*0.9);
     var alpha = Math.max(0, 1-progress*0.85);
     ctx.save();
     ctx.globalAlpha = alpha;
     var grad = ctx.createRadialGradient(x,y,0,x,y,r);
-    grad.addColorStop(0,'#fff2a8');
-    grad.addColorStop(0.35,'#ff8a2f');
-    grad.addColorStop(0.7,'#c81810');
-    grad.addColorStop(1,'rgba(180,20,10,0)');
+    grad.addColorStop(0,'#fff0ff');
+    grad.addColorStop(0.35,'#e070ff');
+    grad.addColorStop(0.7,'#8a1ce0');
+    grad.addColorStop(1,'rgba(90,10,140,0)');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(x,y,Math.max(2,r),0,Math.PI*2);
@@ -2090,11 +2107,40 @@
     ctx.restore();
   }
 
+  function drawClawSwipe(x, y, progress, color){
+    var spread = iH*(0.05 + 0.05*Math.sin(Math.min(1,progress)*Math.PI));
+    var alpha = Math.max(0, 1-progress);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.5, iH*0.012);
+    for(var i=-1; i<=1; i++){
+      ctx.beginPath();
+      ctx.moveTo(x - spread*0.6 + i*iH*0.02, y - spread*0.9);
+      ctx.lineTo(x + spread*0.6 + i*iH*0.02, y + spread*0.9);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = alpha*0.6;
+    var grad = ctx.createRadialGradient(x,y,0,x,y,spread);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x,y,spread,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function drawBossAttack(){
-    var isGrenadePhase = !bossForm2;
+    var isPhase1 = !bossForm2;
+    var isMelee = bossAttackVariant === 'melee';
+
     if(bossPhase==='charging'){
       ctx.save();
-      ctx.strokeStyle = (bossForm2 && bossAttackVariant==='eyelaser') ? 'rgba(255,32,32,0.85)' : 'rgba(255,70,70,0.85)';
+      ctx.strokeStyle = isPhase1 ? 'rgba(190,90,255,0.85)' : 'rgba(255,40,40,0.9)';
       ctx.lineWidth = 2;
       bossTargetLanes.forEach(function(lane){
         var gx = laneCenterX(lane, 1);
@@ -2106,7 +2152,7 @@
       });
       ctx.restore();
 
-      if(isGrenadePhase){
+      if(!isMelee && isPhase1){
         var chargeProgress = 1 - Math.max(0, bossPhaseTimer)/Math.max(0.01, bossPhaseDuration);
         var bx = laneCenterX(bossLaneVisual, 1);
         var by = groundY() - iH*0.015 - iH*0.36 + Math.sin(performance.now()/260)*2;
@@ -2115,24 +2161,30 @@
           var px = bx + (tx-bx)*chargeProgress;
           var arcH = iH*0.14;
           var py = by + (ty-by)*chargeProgress - Math.sin(chargeProgress*Math.PI)*arcH;
-          drawGrenade(px, py, chargeProgress*10 + idx);
+          drawFireball(px, py, chargeProgress*10 + idx);
         });
       }
     } else if(bossPhase==='firing'){
-      if(bossForm2 && bossAttackVariant==='lunge') return;
       var fireProgress = 1 - Math.max(0, bossPhaseTimer)/Math.max(0.01, bossPhaseDuration);
-      if(isGrenadePhase){
+      if(isMelee){
         bossBeamLanes.forEach(function(lane){
           var x = laneCenterX(lane, 1);
-          drawExplosion(x, groundY()-4, fireProgress);
+          drawClawSwipe(x, groundY()-4, fireProgress, isPhase1 ? '#c04dff' : '#ff2020');
+        });
+        return;
+      }
+      if(isPhase1){
+        bossBeamLanes.forEach(function(lane){
+          var x = laneCenterX(lane, 1);
+          drawFireballBurst(x, groundY()-4, fireProgress);
         });
       } else {
         var topY = groundY() - iH*0.36;
         var botY = groundY();
-        var alpha = Math.min(1, 1-fireProgress);
+        var alpha = Math.min(1, 1-fireProgress*0.7);
         bossBeamLanes.forEach(function(lane){
           var x = laneCenterX(lane, 1);
-          drawFlameColumn(x, topY, botY, alpha, lane*13.7);
+          drawRedLaser(x, topY, botY, alpha, lane*13.7);
         });
       }
     }
