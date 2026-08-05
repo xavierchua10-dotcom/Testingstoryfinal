@@ -525,6 +525,48 @@
     noiseHit(0.3, 0.16, 0, 2200);
   }
 
+  function playBell(freq, gainVal){
+    if(muted || !audioCtx) return;
+    var t = audioCtx.currentTime;
+    var partials = [1, 2.01, 2.41, 3.06, 4.18];
+    var amps = [1, 0.55, 0.38, 0.22, 0.12];
+    partials.forEach(function(mult, i){
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq*mult;
+      var g = (gainVal||0.14) * amps[i];
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(g, t+0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t+2.2-i*0.15);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t); osc.stop(t+2.3);
+    });
+  }
+
+  function playChoirPad(freqs, duration, gainVal){
+    if(muted || !audioCtx) return;
+    var t = audioCtx.currentTime;
+    var filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 620;
+    filter.Q.value = 0.8;
+    var master = audioCtx.createGain();
+    master.gain.setValueAtTime(0, t);
+    master.gain.linearRampToValueAtTime(gainVal, t+0.6);
+    master.gain.linearRampToValueAtTime(0, t+duration);
+    filter.connect(master).connect(audioCtx.destination);
+    freqs.forEach(function(f){
+      [0, 1, -1].forEach(function(detuneSteps){
+        var osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = f * Math.pow(2, detuneSteps*0.006);
+        osc.connect(filter);
+        osc.start(t); osc.stop(t+duration+0.05);
+      });
+    });
+  }
+
   var THEME = 'castle'; // 'city' | 'forest' | 'cyberpunk' | 'castle'
 
   var CHORDS = [
@@ -540,10 +582,10 @@
     { bass:87.31, pad:[174.61,220.00,261.63] }  // F major
   ];
   var BOSS_CHORDS = [
-    { bass:36.71, pad:[146.83,155.56,207.65], shriek:[622.25,659.26,830.61,659.26] }, // D cluster + tritone
-    { bass:30.87, pad:[123.47,130.81,174.61], shriek:[493.88,523.25,698.46,523.25] }, // B cluster
-    { bass:34.65, pad:[138.59,146.83,196.00], shriek:[554.37,587.33,783.99,587.33] }, // C# cluster
-    { bass:32.70, pad:[130.81,138.59,185.00], shriek:[523.25,554.37,739.99,554.37] }  // C cluster
+    { bass:36.71, pad:[73.42,87.31,103.83,146.83], bell:146.83 },  // D diminished 7
+    { bass:43.65, pad:[87.31,103.83,123.47,174.61], bell:174.61 }, // F diminished 7
+    { bass:51.91, pad:[103.83,123.47,146.83,207.65], bell:207.65 },// G# diminished 7
+    { bass:61.74, pad:[123.47,146.83,174.61,246.94], bell:246.94 } // B diminished 7
   ];
   var BPM = 92;
   var STEP_DUR = 60/BPM/4;
@@ -562,19 +604,19 @@
       }
 
       if(seqStep === 0){
-        playBass808(chord.bass, boss ? 0.9 : 1.6, boss ? 0.32 : 0.24, 'sawtooth');
-        playPad(chord.pad, STEP_DUR*16, boss ? 0.065 : 0.05, true);
+        playBass808(chord.bass, boss ? 0.9 : 1.6, boss ? 0.3 : 0.22, 'triangle');
+        playChoirPad(chord.pad, STEP_DUR*16, boss ? 0.06 : 0.045);
       }
 
       if(boss){
-        var hatGain = (seqStep % 4 === 2) ? 0.09 : 0.06;
-        noiseHit(0.03, hatGain, 0, 6000);
-      } else if(Math.random() < 0.12){
-        noiseHit(0.02, 0.035, 0, 8000);
+        var hatGain = (seqStep % 4 === 2) ? 0.07 : 0.045;
+        noiseHit(0.05, hatGain, 0, 3200);
+      } else if(Math.random() < 0.1){
+        noiseHit(0.06, 0.03, 0, 2600);
       }
 
-      if(boss && chord.shriek && seqStep % 2 === 0){
-        playArp(chord.shriek[(seqStep/2) % chord.shriek.length]);
+      if(chord.bell && (seqStep === 0 || (boss && seqStep === 8))){
+        playBell(chord.bell, boss ? 0.16 : 0.11);
       }
 
       if(Math.random() < (boss ? 0.012 : 0.006)){
@@ -648,7 +690,7 @@
   var BOSS3_HEALTH = 14;
   var RAGE_SPEED_MULT = 0.62;
   var PHASE1_SPEED_MULT = 1.35;
-  var PHASE2_SPEED_MULT = 1.15;
+  var PHASE2_SPEED_MULT = 1.4;
   var BOSS_HOME_LANE = 0;
   var bossForm2, bossAttackVariant, bossZoom, bossTransformFlash, bossRageMode;
   var bossFlipsRemaining, bossNextFlipTimer;
@@ -820,6 +862,16 @@
     var sum = 0;
     arr.forEach(function(l){ sum += l; });
     return sum/arr.length;
+  }
+  function advanceBossEncounter(){
+    if(!bossForm2){
+      bossHoverTarget = BOSS_HOME_LANE;
+      bossTargetLanes = pickTargetLanes(1);
+    } else {
+      bossHoverTarget = pickTargetLanes(1)[0];
+      bossTargetLanes = [bossHoverTarget];
+    }
+    bossPhase = 'moving';
   }
 
   function spawnWave(){
@@ -1163,7 +1215,7 @@
           bossHealth = bossMaxHealth;
           bossWarningTimer = 0; bossWarningShown = false;
           bossTargetLanes = pickTargetLanes(1);
-          bossHoverTarget = bossTargetLanes[0];
+          bossHoverTarget = BOSS_HOME_LANE;
           bossLaneVisual = BOSS_HOME_LANE;
           bossPhase = 'moving'; bossPhaseTimer = 0;
           bossLabel.textContent = startBt.name;
@@ -1196,7 +1248,7 @@
           bossPhaseDuration = bossPhaseTimer;
 
           bossAttackVariant = Math.random()<0.5 ? 'melee' : 'ranged';
-          bossTargetLanes = [bossHoverTarget];
+          if(bossForm2){ bossTargetLanes = [bossHoverTarget]; }
 
           if(bossRageMode){
             bossFlipsRemaining = 2+Math.floor(Math.random()*2);
@@ -1253,15 +1305,11 @@
             obstacles = []; coins = []; powerUps = [];
             if(!bossForm2){
               startCutscene(TRANSFORM_LINES, function(){
-                bossHoverTarget = pickTargetLanes(1)[0];
-                bossTargetLanes = [bossHoverTarget];
-                bossPhase = 'moving';
+                advanceBossEncounter();
               });
             } else if(!bossRageMode){
               startCutscene(RAGE_LINES, function(){
-                bossHoverTarget = pickTargetLanes(1)[0];
-                bossTargetLanes = [bossHoverTarget];
-                bossPhase = 'moving';
+                advanceBossEncounter();
               });
             } else {
               startCutscene(FINAL_DEFEAT_LINES, function(){
@@ -1276,9 +1324,7 @@
               });
             }
           } else {
-            bossHoverTarget = pickTargetLanes(1)[0];
-            bossTargetLanes = [bossHoverTarget];
-            bossPhase = 'moving';
+            advanceBossEncounter();
           }
         }
       }
@@ -2012,10 +2058,15 @@
         img = bossImgIdle1;
       }
     }
-    var x = laneCenterX(bossLaneVisual, 1);
+    var BOSS_VISUAL_Z = 0.64;
+    var BOSS_MELEE_Z = 0.95;
+    var z = BOSS_VISUAL_Z + (BOSS_MELEE_Z - BOSS_VISUAL_Z) * bossZoom;
+    var x = laneCenterX(bossLaneVisual, z);
     var baseY = groundY() - iH*0.015;
-    var hoverY = baseY - iH*0.36 + Math.sin(performance.now()/260)*2 + bossZoom*iH*0.22;
-    var bodyH = iH*0.15 * (1 + bossZoom*1.7);
+    var baseHoverY = baseY - iH*0.36;
+    var closeHoverY = baseY - iH*0.12;
+    var hoverY = baseHoverY + (closeHoverY - baseHoverY) * bossZoom + Math.sin(performance.now()/260)*2;
+    var bodyH = iH*0.15;
     var aspect = (img.complete && img.naturalWidth>0) ? (img.naturalWidth/img.naturalHeight) : 0.7;
     var bodyW = bodyH*aspect;
 
@@ -2042,13 +2093,7 @@
     }
 
     if(img.complete && img.naturalWidth>0){
-      ctx.save();
-      if(bossZoom>0.02){
-        ctx.shadowColor = '#ff2020';
-        ctx.shadowBlur = 8*bossZoom;
-      }
       ctx.drawImage(img, Math.round(x-bodyW/2), Math.round(hoverY-bodyH), Math.round(bodyW), Math.round(bodyH));
-      ctx.restore();
     }
   }
 
