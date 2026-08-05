@@ -647,6 +647,8 @@
   var BOSS2_HEALTH = 12;
   var BOSS3_HEALTH = 14;
   var RAGE_SPEED_MULT = 0.62;
+  var PHASE1_SPEED_MULT = 1.35;
+  var PHASE2_SPEED_MULT = 1.15;
   var BOSS_HOME_LANE = 0;
   var bossForm2, bossAttackVariant, bossZoom, bossTransformFlash, bossRageMode;
   var bossFlipsRemaining, bossNextFlipTimer;
@@ -1161,7 +1163,7 @@
           bossHealth = bossMaxHealth;
           bossWarningTimer = 0; bossWarningShown = false;
           bossTargetLanes = pickTargetLanes(1);
-          bossHoverTarget = BOSS_HOME_LANE;
+          bossHoverTarget = bossTargetLanes[0];
           bossLaneVisual = BOSS_HOME_LANE;
           bossPhase = 'moving'; bossPhaseTimer = 0;
           bossLabel.textContent = startBt.name;
@@ -1180,22 +1182,25 @@
       }
     } else if(bossActive){
       var bt = BOSS_TYPES[bossTypeIndex];
-      bossHoverTarget = BOSS_HOME_LANE;
       bossLaneVisual += (bossHoverTarget - bossLaneVisual) * Math.min(1, BOSS_LANE_LERP*dt);
+
+      var meleeActive = (bossPhase==='charging' || bossPhase==='firing') && bossAttackVariant==='melee';
+      var zoomTarget = meleeActive ? 1 : 0;
+      bossZoom += (zoomTarget - bossZoom) * Math.min(1, dt*6);
 
       if(bossPhase === 'moving'){
         if(Math.abs(bossLaneVisual-bossHoverTarget) < 0.04){
           bossPhase = 'charging';
-          var rageMult1 = bossRageMode ? RAGE_SPEED_MULT : 1;
-          bossPhaseTimer = (bt.chargeMin + Math.random()*(bt.chargeMax-bt.chargeMin)) * rageMult1;
+          var phaseMult1 = bossRageMode ? RAGE_SPEED_MULT : (bossForm2 ? PHASE2_SPEED_MULT : PHASE1_SPEED_MULT);
+          bossPhaseTimer = (bt.chargeMin + Math.random()*(bt.chargeMax-bt.chargeMin)) * phaseMult1;
           bossPhaseDuration = bossPhaseTimer;
 
           bossAttackVariant = Math.random()<0.5 ? 'melee' : 'ranged';
-          bossTargetLanes = pickTargetLanes(1);
+          bossTargetLanes = [bossHoverTarget];
 
-          if(bossForm2){
-            bossFlipsRemaining = bossRageMode ? (2+Math.floor(Math.random()*2)) : 1;
-            var flipSpan = bossPhaseDuration * (bossRageMode ? 0.55 : 0.7);
+          if(bossRageMode){
+            bossFlipsRemaining = 2+Math.floor(Math.random()*2);
+            var flipSpan = bossPhaseDuration * 0.55;
             bossNextFlipTimer = bossPhaseDuration*0.18 + Math.random()*flipSpan;
           } else {
             bossFlipsRemaining = 0;
@@ -1212,7 +1217,7 @@
             bossTargetLanes = [ otherLanes[Math.floor(Math.random()*otherLanes.length)] ];
             bossFlipsRemaining--;
             var remainTime = Math.max(0.05, bossPhaseTimer - 0.05);
-            var nextGap = bossRageMode ? (0.08+Math.random()*0.14) : (0.12+Math.random()*0.18);
+            var nextGap = 0.08+Math.random()*0.14;
             bossNextFlipTimer = Math.min(nextGap, remainTime*0.6);
           }
         }
@@ -1236,8 +1241,8 @@
         bossPhaseTimer -= dt;
         if(bossPhaseTimer <= 0){
           bossPhase = 'cooldown';
-          var rageMult2 = bossRageMode ? RAGE_SPEED_MULT : 1;
-          bossPhaseTimer = (bt.cooldownMin + Math.random()*(bt.cooldownMax-bt.cooldownMin)) * rageMult2;
+          var phaseMult2 = bossRageMode ? RAGE_SPEED_MULT : (bossForm2 ? PHASE2_SPEED_MULT : PHASE1_SPEED_MULT);
+          bossPhaseTimer = (bt.cooldownMin + Math.random()*(bt.cooldownMax-bt.cooldownMin)) * phaseMult2;
         }
       } else if(bossPhase === 'cooldown'){
         bossPhaseTimer -= dt;
@@ -1248,14 +1253,14 @@
             obstacles = []; coins = []; powerUps = [];
             if(!bossForm2){
               startCutscene(TRANSFORM_LINES, function(){
-                bossTargetLanes = pickTargetLanes(1);
-                bossHoverTarget = BOSS_HOME_LANE;
+                bossHoverTarget = pickTargetLanes(1)[0];
+                bossTargetLanes = [bossHoverTarget];
                 bossPhase = 'moving';
               });
             } else if(!bossRageMode){
               startCutscene(RAGE_LINES, function(){
-                bossTargetLanes = pickTargetLanes(1);
-                bossHoverTarget = BOSS_HOME_LANE;
+                bossHoverTarget = pickTargetLanes(1)[0];
+                bossTargetLanes = [bossHoverTarget];
                 bossPhase = 'moving';
               });
             } else {
@@ -1271,8 +1276,8 @@
               });
             }
           } else {
-            bossTargetLanes = pickTargetLanes(1);
-            bossHoverTarget = BOSS_HOME_LANE;
+            bossHoverTarget = pickTargetLanes(1)[0];
+            bossTargetLanes = [bossHoverTarget];
             bossPhase = 'moving';
           }
         }
@@ -2009,8 +2014,8 @@
     }
     var x = laneCenterX(bossLaneVisual, 1);
     var baseY = groundY() - iH*0.015;
-    var hoverY = baseY - iH*0.36 + Math.sin(performance.now()/260)*2;
-    var bodyH = iH*0.15;
+    var hoverY = baseY - iH*0.36 + Math.sin(performance.now()/260)*2 + bossZoom*iH*0.22;
+    var bodyH = iH*0.15 * (1 + bossZoom*1.7);
     var aspect = (img.complete && img.naturalWidth>0) ? (img.naturalWidth/img.naturalHeight) : 0.7;
     var bodyW = bodyH*aspect;
 
@@ -2037,7 +2042,13 @@
     }
 
     if(img.complete && img.naturalWidth>0){
+      ctx.save();
+      if(bossZoom>0.02){
+        ctx.shadowColor = '#ff2020';
+        ctx.shadowBlur = 8*bossZoom;
+      }
       ctx.drawImage(img, Math.round(x-bodyW/2), Math.round(hoverY-bodyH), Math.round(bodyW), Math.round(bodyH));
+      ctx.restore();
     }
   }
 
